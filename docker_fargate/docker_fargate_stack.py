@@ -147,7 +147,7 @@ class DockerFargateStack(Stack):
 
         # Opentelemetry collector
 
-        secret_name_otel_config = f'{stack_id}/{context}/otel-collector-config'
+        secret_name_otel_config = f'{stack_id}/{context}/ecs-otel-collector-config'
         secrets_otel_config = {
             "AOT_CONFIG_CONTENT": get_secret(
                 self, secret_name_otel_config, secret_name_otel_config)
@@ -168,13 +168,14 @@ class DockerFargateStack(Stack):
             # TODO: Secret for telemetry needs to be put into an enironment variable "AOT_CONFIG_CONTENT"
             secrets=secrets_otel_config,
             # TODO ----------------------------
-            container_port=4318)
+            # TODO: Multiple ports are required here as health is on 13133, but the service is on 4318
+            container_port=13133)
 
         load_balanced_fargate_otel_collector_service = ecs_patterns.ApplicationLoadBalancedFargateService(
             self,
             f'{stack_prefix}-otel-collector-Service',
             cluster=cluster,            # Required
-            cpu=500,                    # Default is 256 which is 0.25vCPU; 500 is 0.5 vCPU
+            cpu=512,                    # Default is 256 which is 0.25vCPU; 512 is 0.5 vCPU
             # Number of copies of the 'task' (i.e. the app') running behind the ALB
             desired_count=1,
             circuit_breaker=ecs.DeploymentCircuitBreaker(
@@ -183,8 +184,6 @@ class DockerFargateStack(Stack):
             # Default is 512; 1024 MiB is equivalent to 1GB.
             memory_limit_mib=1024,
             public_load_balancer=False,  # Default is False
-            # Modify default idle time out to avoid 504 gateway error
-            idle_timeout=Duration.seconds(300),
             # TLS:
             certificate=cert,
             protocol=elbv2.ApplicationProtocol.HTTPS,
@@ -194,10 +193,13 @@ class DockerFargateStack(Stack):
             # TODO: What is the method to configure service discovery?
             # cloud_map_options=ecs.CloudMapOptions(
             #     cloud_map_namespace=ecs.CloudMapNamespaceOptions())
+            # TODO: Multiple ports are required here as health is on 13133, but the service is on 4318
+            listener_port=13133
         )
 
+        # https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/extension/healthcheckextension/README.md
         load_balanced_fargate_otel_collector_service.target_group.configure_health_check(protocol=elbv2.Protocol.HTTPS, interval=Duration.seconds(
-            5), timeout=Duration.seconds(3), path="/healthcheck", healthy_http_codes="200-308", unhealthy_threshold_count=5)
+            5), timeout=Duration.seconds(3), path="/healthcheck", port="13133", healthy_http_codes="200-308", unhealthy_threshold_count=5)
 
         if True:  # enable/disable autoscaling
             scalable_target_otel_collector = load_balanced_fargate_otel_collector_service.service.auto_scale_task_count(
