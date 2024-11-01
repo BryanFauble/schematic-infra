@@ -146,6 +146,12 @@ class DockerFargateStack(Stack):
                   export_name=lb_dns_export_name)
 
         # Opentelemetry collector
+
+        secret_name_otel_config = f'{stack_id}/{context}/otel-collector-config'
+        secrets_otel_config = {
+            "AOT_CONFIG_CONTENT": get_secret(
+                self, secret_name_otel_config, secret_name_otel_config)
+        }
         task_image_options_collector = ecs_patterns.ApplicationLoadBalancedTaskImageOptions(
             image=ecs.ContainerImage.from_registry(
                 name="public.ecr.aws/aws-observability/aws-otel-collector:latest"),
@@ -159,7 +165,8 @@ class DockerFargateStack(Stack):
 
             #    environment=env_vars,
             # TODO: Pull secrets for authentication from AWS Secrets Manager
-            #    secrets = secrets,
+            # TODO: Secret for telemetry needs to be put into an enironment variable "AOT_CONFIG_CONTENT"
+            secrets=secrets_otel_config,
             # TODO ----------------------------
             container_port=4318)
 
@@ -210,5 +217,5 @@ class DockerFargateStack(Stack):
 
         lb_dns_name_collector = load_balanced_fargate_otel_collector_service.load_balancer.load_balancer_dns_name
         lb_dns_export_name_collector = f'{stack_id}-otel-collector-LoadBalancerDNS'
-        CfnOutput(self, 'LoadBalancerDNS', value=lb_dns_name_collector,
+        CfnOutput(self, 'OtelCollectorLoadBalancerDNS', value=lb_dns_name_collector,
                   export_name=lb_dns_export_name_collector)
